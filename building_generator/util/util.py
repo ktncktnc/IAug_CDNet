@@ -208,6 +208,7 @@ def load_network(net, label, epoch, opt):
     save_path = os.path.join(save_dir, save_filename)
     weights = torch.load(save_path)
     net.load_state_dict(weights,strict=False)
+    print("Load " + str(net) + "done at " + str(save_path))
     return net
 
 
