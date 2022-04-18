@@ -14,7 +14,7 @@ class IterationCounter():
         self.opt = opt
         #  这里输入的dataset_size=len(dataset)，本在逻辑是：总样本数/batch_size
         self.dataset_size = dataset_size * opt.batchSize
-        print('self.dataset_size； ', self.dataset_size)
+        print('self.dataset_size: ', self.dataset_size)
         self.first_epoch = 1
         self.total_epochs = opt.niter + opt.niter_decay
         self.max_step = self.total_epochs * self.dataset_size  # add
