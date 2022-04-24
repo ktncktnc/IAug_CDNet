@@ -1,6 +1,6 @@
 from misc.pyutils import get_paths, mkdir, seed_random
 from misc.imutils import im2arr, save_image
-
+from color_transfer import color_transfer
 import ntpath
 import os
 import random
@@ -167,13 +167,15 @@ def generate_new_sample(out_A, out_B, out_L, A, B, ref, src, mask, blend_mode=No
     if x is None:
         return None
     #  random t1/t2
-    if (random.random() > 0.5):
+    if random.random() > 0.5:
+        src = color_transfer(src, A)
         out_A[y:y + dy, x:x + dx] = blend(src=src[y1:y1 + dy, x1:x1 + dx],
                                           mask=(mask_instance[y1:y1 + dy, x1:x1 + dx] != 0).astype(np.uint8),
                                           dst=A[y:y + dy, x:x + dx],
                                           expand_for_building=True,
                                           blend_mode=blend_mode)
     else:
+        src = color_transfer(src, B)
         out_B[y:y + dy, x:x + dx] = blend(src=src[y1:y1 + dy, x1:x1 + dx],
                                           mask=(mask_instance[y1:y1 + dy, x1:x1 + dx] != 0).astype(np.uint8),
                                           dst=B[y:y + dy, x:x + dx],
@@ -278,7 +280,7 @@ def syn_CD_data():
                     try_time += 1
 
             # record copy-paste object info.
-            log_add_instance = os.path.join(out_path, 'add_instances_log.txt')
+                log_add_instance = os.path.join(out_path, 'add_instances_log.txt')
             with open(log_add_instance, 'a') as log:
                 for item in log_ins_list:
                     log.write(item)
