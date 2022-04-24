@@ -6,6 +6,7 @@ import os
 import random
 import numpy as np
 import cv2
+from tqdm import tqdm
 
 # Set random seed
 seed_random(2020)
@@ -31,13 +32,13 @@ def blend(src, mask, dst, blend_mode='direct', expand_for_building=True):
     dh, dw = src.shape[:2]
 
     # alpha_A
-    mask_A = np.zeros([dh, dw],dtype=np.float)
-    mask_A[mask == 1] = 1
+    mask_a = np.zeros([dh, dw], dtype=float)
+    mask_a[mask == 1] = 1
     #  alpha_B
-    mask_B = np.ones([dh, dw], dtype=np.float)
-    mask_B[mask == 1] = 0
+    mask_b = np.ones([dh, dw], dtype=float)
+    mask_b[mask == 1] = 0
 
-    if blend_mode is 'direct' or blend_mode=='poisson':
+    if blend_mode == 'direct' or blend_mode == 'poisson':
         expand_for_building = False
 
     if expand_for_building:
@@ -45,11 +46,11 @@ def blend(src, mask, dst, blend_mode='direct', expand_for_building=True):
         mask_expand = cv2.dilate(mask, kernel, iterations=1)
         mask_expand_minus_ = mask_expand - mask
         #  中间过度地带
-        mask_A[mask_expand_minus_ == 1] = 1
-        mask_B[mask_expand_minus_ == 1] = 0
+        mask_a[mask_expand_minus_ == 1] = 1
+        mask_b[mask_expand_minus_ == 1] = 0
 
     if blend_mode == 'poisson':
-        center = (dw//2, dh//2)
+        center = (dw // 2, dh // 2)
         mask_ = mask.copy() * 255
         expand = True
         if expand:
@@ -62,20 +63,20 @@ def blend(src, mask, dst, blend_mode='direct', expand_for_building=True):
         return out
 
     elif blend_mode == 'gaussian':
-        mask_A = cv2.GaussianBlur(mask_A, (7, 7), 2)
-        mask_B = cv2.GaussianBlur(mask_B, (7, 7), 2)
+        mask_a = cv2.GaussianBlur(mask_a, (7, 7), 2)
+        mask_b = cv2.GaussianBlur(mask_b, (7, 7), 2)
 
     elif blend_mode == 'box':
-        mask_A = cv2.blur(mask_A, (7, 7))
-        mask_B = cv2.blur(mask_B, (7, 7))
+        mask_a = cv2.blur(mask_a, (7, 7))
+        mask_b = cv2.blur(mask_b, (7, 7))
 
     # extend to 3D
-    mask_A = mask_A[:,:,np.newaxis]
-    mask_B = mask_B[:, :, np.newaxis]
-    mask_A = np.repeat(mask_A, repeats=3, axis=2)
-    mask_B = np.repeat(mask_B, repeats=3, axis=2)
+    mask_a = mask_a[:, :, np.newaxis]
+    mask_b = mask_b[:, :, np.newaxis]
+    mask_a = np.repeat(mask_a, repeats=3, axis=2)
+    mask_b = np.repeat(mask_b, repeats=3, axis=2)
 
-    out = src * mask_A + dst * mask_B
+    out = src * mask_a + dst * mask_b
     return out.astype(np.uint8)
 
 
@@ -88,12 +89,12 @@ def sample_area(labels, dx, dy):
     """
     h, w = labels.shape[:2]
     # random generate x, y
-    y = random.randint(0, h-dy-1)
-    x = random.randint(0, w-dx-1)
+    y = random.randint(0, h - dy - 1)
+    x = random.randint(0, w - dx - 1)
     #  Determine whether the area is in the labels area
     try_num = 0
-    while (try_num < 10):
-        if (labels[y:y + dy, x:x + dx].sum()==0):
+    while try_num < 10:
+        if labels[y:y + dy, x:x + dx].sum() == 0:
             return x, y
         else:
             try_num += 1
@@ -102,7 +103,7 @@ def sample_area(labels, dx, dy):
     return None, None
 
 
-def extend_bbox(x,y,dx,dy,h,w,extend_num):
+def extend_bbox(x, y, dx, dy, h, w, extend_num):
     """
     extend area of the instance to size of extend_num*2
     :return:
@@ -113,13 +114,13 @@ def extend_bbox(x,y,dx,dy,h,w,extend_num):
     out_y = y - extend_num
     if out_y < 0:
         out_y = 0
-    out_dx = dx + extend_num*2
-    if x+out_dx > w-1:
+    out_dx = dx + extend_num * 2
+    if x + out_dx > w - 1:
         out_dx = w - 1 - x
     out_dy = dy + extend_num * 2
-    if y+out_dy > h-1:
-        out_dy = h-1-y
-    return out_x,out_y,out_dx,out_dy
+    if y + out_dy > h - 1:
+        out_dy = h - 1 - y
+    return out_x, out_y, out_dx, out_dy
 
 
 def get_single_source_list(img_folder, label_folder, match_key='*.png', shuffle=True):
@@ -139,7 +140,7 @@ def get_single_source_list(img_folder, label_folder, match_key='*.png', shuffle=
     return img_label_paths
 
 
-def generate_new_sample(out_A, out_B, out_L, A, B, ref, src, mask, blend_mode=None, mask_mode=None):
+def generate_new_sample(out_img_1, out_img_2, out_l, out_l1, out_l2, img_1, img_2, ref, src, mask, blend_mode=None, mask_mode=None):
     """once paste one instance，
     ndarray: a reference value
     :return:
@@ -168,20 +169,23 @@ def generate_new_sample(out_A, out_B, out_L, A, B, ref, src, mask, blend_mode=No
         return None
     #  random t1/t2
     if random.random() > 0.5:
-        src = color_transfer(src, A)
-        out_A[y:y + dy, x:x + dx] = blend(src=src[y1:y1 + dy, x1:x1 + dx],
-                                          mask=(mask_instance[y1:y1 + dy, x1:x1 + dx] != 0).astype(np.uint8),
-                                          dst=A[y:y + dy, x:x + dx],
-                                          expand_for_building=True,
-                                          blend_mode=blend_mode)
+        src = color_transfer(src, img_1)
+        out_img_1[y:y + dy, x:x + dx] = blend(src=src[y1:y1 + dy, x1:x1 + dx],
+                                              mask=(mask_instance[y1:y1 + dy, x1:x1 + dx] != 0).astype(np.uint8),
+                                              dst=img_1[y:y + dy, x:x + dx],
+                                              expand_for_building=True,
+                                              blend_mode=blend_mode)
+        out_l1[y:y + dy, x:x + dx] = true_mask[y1:y1 + dy, x1:x1 + dx]
     else:
-        src = color_transfer(src, B)
-        out_B[y:y + dy, x:x + dx] = blend(src=src[y1:y1 + dy, x1:x1 + dx],
-                                          mask=(mask_instance[y1:y1 + dy, x1:x1 + dx] != 0).astype(np.uint8),
-                                          dst=B[y:y + dy, x:x + dx],
-                                          expand_for_building=True,
-                                          blend_mode=blend_mode)
-    out_L[y:y + dy, x:x + dx] = true_mask[y1:y1 + dy, x1:x1 + dx]
+        src = color_transfer(src, img_2)
+        out_img_2[y:y + dy, x:x + dx] = blend(src=src[y1:y1 + dy, x1:x1 + dx],
+                                              mask=(mask_instance[y1:y1 + dy, x1:x1 + dx] != 0).astype(np.uint8),
+                                              dst=img_2[y:y + dy, x:x + dx],
+                                              expand_for_building=True,
+                                              blend_mode=blend_mode)
+        out_l2[y:y + dy, x:x + dx] = true_mask[y1:y1 + dy, x1:x1 + dx]
+
+    out_l[y:y + dy, x:x + dx] = true_mask[y1:y1 + dy, x1:x1 + dx]
     ref[y:y + dy, x:x + dx] = true_mask[y1:y1 + dy, x1:x1 + dx]
 
     return 1
@@ -190,14 +194,17 @@ def generate_new_sample(out_A, out_B, out_L, A, B, ref, src, mask, blend_mode=No
 def syn_CD_data():
     ################################
     #  first define the some paths
-    A_folder = r'samples\LEVIR\A'
-    B_folder = r'samples\LEVIR\B'
-    L_folder = r'samples\LEVIR\label'
-    ref_folder = r'samples\LEVIR\ref'
+    a_folder = r'samples\S2Looking\Image1'
+    b_folder = r'samples\S2Looking\Image2'
+    l_folder = r'samples\S2Looking\label'
+    l1_folder = r'samples\S2Looking\label'
+    l2_folder = r'samples\S2Looking\label'
+    ref_folder = r'samples\S2Looking\label'
+
     #  instance path
-    src_folder = r'samples\SYN_CD\image' #test
-    label_folder = r'samples\SYN_CD\shadow'  # test
-    out_folder = r'samples\SYN_CD\out_sample'
+    src_folder = r'samples\gan\image'  # test
+    label_folder = r'samples\gan\shadow'  # test
+    out_folder = r'samples\S2Looking\out_sample'
     os.makedirs(out_folder, exist_ok=True)
     # how many instance to paste per sample
     M = 50
@@ -205,9 +212,11 @@ def syn_CD_data():
 
     suffix = '*.png'
     image_read_mode = 3 if 'tif' in suffix else 1
-    A_paths = get_paths(A_folder, suffix)
-    B_paths = get_paths(B_folder, suffix)
-    L_paths = get_paths(L_folder, suffix)
+    a_paths = get_paths(a_folder, suffix)
+    b_paths = get_paths(b_folder, suffix)
+    l_paths = get_paths(l_folder, suffix)
+    l1_paths = get_paths(l_folder, suffix)
+    l2_paths = get_paths(l_folder, suffix)
     ref_paths = get_paths(ref_folder, suffix)
 
     mask_mode = 'shadow'
@@ -216,7 +225,7 @@ def syn_CD_data():
     src_label_paths = get_single_source_list(src_folder, label_folder,
                                              match_key='*.png', shuffle=True)
 
-    modes = ['gaussian', 'poisson', 'extend']  # ['poisson','gaussian','extend','direct']
+    modes = ['poisson']  # ['poisson','gaussian','extend','direct']
 
     for mode in modes:
         # valid pasted instance number
@@ -228,59 +237,69 @@ def syn_CD_data():
 
         out_path = os.path.join(out_folder, mode + '_' + mask_mode)
 
-        out_path_A = os.path.join(out_path, 'A')
-        out_path_B = os.path.join(out_path, 'B')
-        out_path_L = os.path.join(out_path, 'label')
-        mkdir(out_path_A)
-        mkdir(out_path_B)
-        mkdir(out_path_L)
+        out_path_a = os.path.join(out_path, 'A')
+        out_path_b = os.path.join(out_path, 'B')
+        out_path_l = os.path.join(out_path, 'label')
+        out_path_l1 = os.path.join(out_path, 'label1')
+        out_path_l2 = os.path.join(out_path, 'label2')
+        mkdir(out_path_a)
+        mkdir(out_path_b)
+        mkdir(out_path_l)
+        mkdir(out_path_l1)
+        mkdir(out_path_l2)
 
         blend_method = mode
 
-        output_txt = os.path.join(out_path, 'method_add_instance_from_' + blend_method + '_' + mask_mode + '_instancePerImage' + str(
-                                      M) + '_log.txt')
+        output_txt = os.path.join(out_path, 'method_' + blend_method + '_' + mask_mode + '_instance' + str(M) + '_log.txt')
         with open(output_txt, 'w'):
             pass
 
-        assert A_paths.__len__() == L_paths.__len__()
-        assert A_paths.__len__() == B_paths.__len__()
-        assert A_paths.__len__() == ref_paths.__len__()
+        assert a_paths.__len__() == l_paths.__len__()
+        assert a_paths.__len__() == l1_paths.__len__()
+        assert a_paths.__len__() == l2_paths.__len__()
+        assert a_paths.__len__() == b_paths.__len__()
+        assert a_paths.__len__() == ref_paths.__len__()
 
-        for i, A_path in enumerate(A_paths):
-            print('process: ', A_path)
-            B_path = B_paths[i]
-            L_path = L_paths[i]
+        for i, A_path in tqdm(enumerate(a_paths)):
+            b_path = b_paths[i]
+            l_path = l_paths[i]
+            l1_path = l1_paths[i]
+            l2_path = l2_paths[i]
             ref_path = ref_paths[i]
 
             basename = ntpath.basename(A_path)
-            A = im2arr(A_path, mode=image_read_mode)
-            B = im2arr(B_path, mode=image_read_mode)
-
-            L = im2arr(L_path, mode=image_read_mode)
+            a = im2arr(A_path, mode=image_read_mode)
+            b = im2arr(b_path, mode=image_read_mode)
+            l = im2arr(l_path, mode=image_read_mode)
+            l1 = im2arr(l1_path, mode=image_read_mode)[..., 2]
+            l2 = im2arr(l2_path, mode=image_read_mode)[..., 0]
             ref = im2arr(ref_path, mode=image_read_mode).copy()
 
-            out_A = A.copy()
-            out_B = B.copy()
-            out_L = L.copy()
+            out_a = a.copy()
+            out_b = b.copy()
+            out_l = l.copy()
+            out_l1 = l.copy()
+            out_l2 = l.copy()
 
             j = 0
             try_time = 0
             log_ins_list = []
             # attempt time on more than try_time_max
-            while (j < M and try_time < 2000):
+            while j < M and try_time < 2000:
                 src_path, label_path = src_label_paths[n % src_label_paths.__len__()]
-                src = im2arr(src_path)
                 mask = im2arr(label_path)
+                src = im2arr(src_path)
                 n += 1
-                if generate_new_sample(out_A, out_B, out_L, out_A, out_B, ref, src, mask, blend_mode=blend_method,
-                                       mask_mode=mask_mode) is not None:
+                if generate_new_sample(out_a, out_b, out_l, out_l1, out_l2, out_a, out_b, ref, src, mask,
+                                       blend_mode=blend_method, mask_mode=mask_mode) \
+                        is not None:
                     j += 1
                     log_ins_list.append(src_path + '\n')  # add log
                 else:
                     try_time += 1
 
             # record copy-paste object info.
-                log_add_instance = os.path.join(out_path, 'add_instances_log.txt')
+            log_add_instance = os.path.join(out_path, 'add_instances_log.txt')
             with open(log_add_instance, 'a') as log:
                 for item in log_ins_list:
                     log.write(item)
@@ -291,9 +310,11 @@ def syn_CD_data():
                 item = len(log_ins_list)
                 log.write(basename + ' ' + str(item) + '\n')
             n_valid = n_valid + j
-            save_image(out_A, os.path.join(out_path_A, '' + basename))
-            save_image(out_B, os.path.join(out_path_B, '' + basename))
-            save_image(out_L, os.path.join(out_path_L, '' + basename))
+            save_image(out_a, os.path.join(out_path_a, '' + basename))
+            save_image(out_b, os.path.join(out_path_b, '' + basename))
+            save_image(out_l, os.path.join(out_path_l, '' + basename))
+            save_image(out_l1, os.path.join(out_path_l1, '' + basename))
+            save_image(out_l2, os.path.join(out_path_l2, '' + basename))
 
         # record the number of the pasted object for the whole dataset
         log_add_instance = os.path.join(out_path, 'add_instances_nums_log.txt')
