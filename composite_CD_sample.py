@@ -194,17 +194,20 @@ def generate_new_sample(out_img_1, out_img_2, out_l, out_l1, out_l2, img_1, img_
 def syn_CD_data():
     ################################
     #  first define the some paths
-    a_folder = r'samples\S2Looking\Image1'
-    b_folder = r'samples\S2Looking\Image2'
-    l_folder = r'samples\S2Looking\label'
-    l1_folder = r'samples\S2Looking\label'
-    l2_folder = r'samples\S2Looking\label'
-    ref_folder = r'samples\S2Looking\label'
+    data_folder = os.path.join('samples', 'S2Looking')
+    gan_folder = os.path.join('samples', 'gan')
+
+    a_folder = os.path.join(data_folder, 'Image1')
+    b_folder = os.path.join(data_folder, 'Image2')
+    l_folder = os.path.join(data_folder, 'label')
+    l1_folder = os.path.join(data_folder, 'label1')
+    l2_folder = os.path.join(data_folder, 'label2')
+    ref_folder = l_folder
 
     #  instance path
-    src_folder = r'samples\gan\image'  # test
-    label_folder = r'samples\gan\shadow'  # test
-    out_folder = r'samples\S2Looking\out_sample'
+    src_folder = os.path.join(gan_folder, 'image')  # test
+    label_folder = os.path.join(gan_folder, 'shadow')  # test
+    out_folder = os.path.join(data_folder, 'out_sample')
     os.makedirs(out_folder, exist_ok=True)
     # how many instance to paste per sample
     M = 50
